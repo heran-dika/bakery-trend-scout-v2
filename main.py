@@ -22,10 +22,9 @@ def main():
     print(f"    -> {len(id_articles)} articles\n")
     
     if id_articles:
-        # Convert articles ke format canonical
         entities = [
             {
-                'trend_name': a['title'][:60],  # Temporary: gunakan title
+                'trend_name': a['title'][:60],
                 'sentiment': 'Neutral',
                 'url': a['url'],
                 'domain': a['domain'],
@@ -68,16 +67,25 @@ def main():
         inserted = insert_daily_trends(canonical, origin="Global")
         print(f"    -> {inserted} trends inserted\n")
     
-    # Analysis & Report
+    # Analysis
     print("[7] Analyzing trends...")
     update_trend_status()
     
+    # Report & Email
     print("[8] Generating report...")
-    report = generate_report()
-    print(f"    -> Report ready\n")
+    report_html = generate_report()
     
-    # Email (optional)
-    print("[9] Done ✓\n")
+    print("[9] Sending email...")
+    recipient = os.getenv("EMAIL_FROM")
+    send_email(
+        recipient=recipient,
+        subject="🍞 BakeryTrendScout Daily Report",
+        html_body=report_html
+    )
+    
+    print(f"\n{'='*60}")
+    print(f"✓ Pipeline completed")
+    print(f"{'='*60}\n")
 
 if __name__ == "__main__":
     main()
