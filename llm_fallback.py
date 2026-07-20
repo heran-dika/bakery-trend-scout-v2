@@ -27,28 +27,6 @@ def call_gemini(prompt: str, timeout: int = 20):
     except Exception as e:
         return None, "GEMINI_EXCEPTION"
 
-def call_cerebras(prompt: str, timeout: int = 20):
-    cerebras_key = os.getenv("CEREBRAS_API_KEY")
-    if not cerebras_key:
-        return None, "CEREBRAS_KEY_MISSING"
-    
-    url = "https://api.cerebras.ai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {cerebras_key}", "Content-Type": "application/json"}
-    payload = {"model": "llama-3.3-70b", "messages": [{"role": "user", "content": prompt}], "max_tokens": 1000}
-    
-    try:
-        response = requests.post(url, json=payload, headers=headers, timeout=timeout)
-        if response.status_code == 200:
-            data = response.json()
-            text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-            return text, "cerebras"
-        elif response.status_code == 429:
-            return None, "CEREBRAS_RATE_LIMIT"
-        else:
-            return None, f"CEREBRAS_ERROR_{response.status_code}"
-    except Exception as e:
-        return None, "CEREBRAS_EXCEPTION"
-
 def call_openrouter(prompt: str, timeout: int = 20):
     openrouter_key = os.getenv("OPENROUTER_API_KEY")
     if not openrouter_key:
@@ -77,7 +55,7 @@ def call_openrouter(prompt: str, timeout: int = 20):
     return None, "OPENROUTER_ALL_FAILED"
 
 def call_llm_with_fallback(prompt: str, response_type: str = "text"):
-    print("[LLM] Trying Layer 1 (Gemini)...")
+    print("[LLM] Layer 1 (Gemini)...")
     text, layer = call_gemini(prompt)
     if text:
         print(f"[LLM] OK (Gemini)")
@@ -89,19 +67,7 @@ def call_llm_with_fallback(prompt: str, response_type: str = "text"):
                 return None, layer
         return text, layer
     
-    print("[LLM] Trying Layer 2 (Cerebras)...")
-    text, layer = call_cerebras(prompt)
-    if text:
-        print(f"[LLM] OK (Cerebras)")
-        if response_type == "json":
-            clean = text.replace("```json", "").replace("```", "").strip()
-            try:
-                return json.loads(clean), layer
-            except:
-                return None, layer
-        return text, layer
-    
-    print("[LLM] Trying Layer 3 (OpenRouter)...")
+    print("[LLM] Layer 2 (OpenRouter)...")
     text, layer = call_openrouter(prompt)
     if text:
         print(f"[LLM] OK ({layer})")
@@ -117,7 +83,7 @@ def call_llm_with_fallback(prompt: str, response_type: str = "text"):
     return None, None
 
 if __name__ == "__main__":
-    prompt = "Extract from: Roti Kukus Srikaya viral. Output JSON: {product, type}"
+    prompt = "Extract: Roti Kukus Srikaya viral. JSON: {product, type}"
     result, layer = call_llm_with_fallback(prompt, response_type="json")
     print(f"\nResult: {result}")
     print(f"Layer: {layer}")
