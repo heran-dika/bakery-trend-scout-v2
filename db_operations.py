@@ -10,6 +10,9 @@ EXCLUDED_DOMAINS = [
     "shopee.co.id",
     "tokopedia.com",
     "bukalapak.com",
+    "pinterest.com",
+    "pinterest.co.id",
+    "tiktok.com/discover",  # TikTok discover pages (generic, bukan postingan individual)
 ]
 
 def is_source_excluded(domain: str) -> bool:

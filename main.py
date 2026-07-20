@@ -8,6 +8,7 @@ from canonicalize import canonicalize_entities
 from db_operations import insert_daily_trends
 from agent_trend_analyst import update_trend_status
 from agent_reporter import generate_report, send_email
+from llm_fallback import call_llm_with_fallback
 
 load_dotenv()
 
@@ -19,9 +20,33 @@ BAKERY_KEYWORDS = [
 ]
 
 def is_bakery_related(title: str, snippet: str) -> bool:
-    """Rule-based filter: title/snippet harus mengandung keyword bakery."""
     text = (title + " " + snippet).lower()
     return any(kw.lower() in text for kw in BAKERY_KEYWORDS)
+
+def extract_trend_name(title: str, snippet: str) -> dict:
+    """Extract trend_name via LLM dari title+snippet."""
+    text = f"Title: {title}\nSnippet: {snippet}"
+    prompt = f"""Extract the specific bakery product name mentioned. Return JSON only:
+{{"product": "...", "type": "bread/cake/pastry/donut/other"}}
+
+Article:
+{text}"""
+    
+    result, layer = call_llm_with_fallback(prompt, response_type="json")
+    
+    if result and result.get("product"):
+        return {
+            "trend_name": result.get("product"),
+            "sentiment": "Neutral",
+            "llm_layer": layer
+        }
+    else:
+        # Fallback ke title kalau LLM fail
+        return {
+            "trend_name": title[:60] if title else "Unknown",
+            "sentiment": "Neutral",
+            "llm_layer": "fallback_title"
+        }
 
 def main():
     print(f"\n{'='*60}")
@@ -34,68 +59,70 @@ def main():
     print(f"    -> {len(id_articles)} articles fetched\n")
     
     id_articles_filtered = [a for a in id_articles if is_bakery_related(a['title'], a['snippet'])]
-    dropped = len(id_articles) - len(id_articles_filtered)
-    print(f"    -> {len(id_articles_filtered)} kept, {dropped} dropped (not bakery-related)\n")
+    print(f"    -> {len(id_articles_filtered)} kept (bakery-related)\n")
     
     if id_articles_filtered:
-        entities = [
-            {
-                'trend_name': a['title'][:60],
-                'sentiment': 'Neutral',
+        print("[2] Extracting entities via LLM...")
+        entities = []
+        for a in id_articles_filtered:
+            extracted = extract_trend_name(a['title'], a['snippet'])
+            entities.append({
+                'trend_name': extracted['trend_name'],
+                'sentiment': extracted['sentiment'],
                 'url': a['url'],
                 'domain': a['domain'],
                 'title': a['title']
-            }
-            for a in id_articles_filtered
-        ]
+            })
+        print(f"    -> {len(entities)} entities extracted\n")
         
-        print("[2] Canonicalizing...")
+        print("[3] Canonicalizing...")
         canonical = canonicalize_entities(entities)
         print(f"    -> {len(canonical)} unique trends\n")
         
-        print("[3] Inserting to DB...")
+        print("[4] Inserting to DB...")
         inserted = insert_daily_trends(canonical, origin="Domestic")
         print(f"    -> {inserted} trends inserted\n")
     
     # Global Scout
-    print("[4] Fetching Global Scout...")
+    print("[5] Fetching Global Scout...")
     country, keyword = get_todays_country()
     global_articles = fetch_global_scout_articles(country, keyword, max_results=5)
-    print(f"    -> {len(global_articles)} articles fetched from {country}\n")
+    print(f"    -> {len(global_articles)} articles from {country}\n")
     
     global_articles_filtered = [a for a in global_articles if is_bakery_related(a['title'], a['snippet'])]
-    dropped = len(global_articles) - len(global_articles_filtered)
-    print(f"    -> {len(global_articles_filtered)} kept, {dropped} dropped (not bakery-related)\n")
+    print(f"    -> {len(global_articles_filtered)} kept (bakery-related)\n")
     
     if global_articles_filtered:
-        entities = [
-            {
-                'trend_name': a['title'][:60],
-                'sentiment': 'Neutral',
+        print("[6] Extracting entities via LLM...")
+        entities = []
+        for a in global_articles_filtered:
+            extracted = extract_trend_name(a['title'], a['snippet'])
+            entities.append({
+                'trend_name': extracted['trend_name'],
+                'sentiment': extracted['sentiment'],
                 'url': a['url'],
                 'domain': a['domain'],
                 'title': a['title']
-            }
-            for a in global_articles_filtered
-        ]
+            })
+        print(f"    -> {len(entities)} entities extracted\n")
         
-        print("[5] Canonicalizing...")
+        print("[7] Canonicalizing...")
         canonical = canonicalize_entities(entities)
         print(f"    -> {len(canonical)} unique trends\n")
         
-        print("[6] Inserting to DB...")
+        print("[8] Inserting to DB...")
         inserted = insert_daily_trends(canonical, origin="Global")
         print(f"    -> {inserted} trends inserted\n")
     
     # Analysis
-    print("[7] Analyzing trends...")
+    print("[9] Analyzing trends...")
     update_trend_status()
     
     # Report & Email
-    print("[8] Generating report...")
+    print("[10] Generating report...")
     report_html = generate_report()
     
-    print("[9] Sending email...")
+    print("[11] Sending email...")
     recipient = os.getenv("EMAIL_FROM")
     send_email(
         recipient=recipient,
