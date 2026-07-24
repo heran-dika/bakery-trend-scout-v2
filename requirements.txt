@@ -4,3 +4,5 @@ ddgs==9.14.4
 tenacity==8.2.3
 python-dotenv==1.0.0
 pydantic==2.5.3
+python-dateutil==2.9.0.post0
+pytrends==4.9.2
