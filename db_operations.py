@@ -160,10 +160,18 @@ def process_entity_with_pending(canonical_entity: Dict, origin: str) -> str:
             'pending_new' kalau bikin pending baru,
             'pending_merged' kalau digabung ke pending yang sudah ada tapi belum lolos,
             'dropped' kalau semua source ke-exclude."""
-    valid_sources = [s for s in canonical_entity["sources"] if not is_source_excluded(s["domain"], s.get("url", ""))]
+    excluded_sources = [s for s in canonical_entity["sources"] if is_source_excluded(s["domain"], s.get("url", ""))]
+    stale_sources = [s for s in canonical_entity["sources"] if not is_source_excluded(s["domain"], s.get("url", "")) and s.get("is_stale", False)]
+    valid_sources = [s for s in canonical_entity["sources"] if not is_source_excluded(s["domain"], s.get("url", "")) and not s.get("is_stale", False)]
 
     if not valid_sources:
-        print(f"  x Dropped (all sources excluded): {canonical_entity['canonical_name']}")
+        reasons = []
+        if excluded_sources:
+            reasons.append(f"{len(excluded_sources)} excluded domain")
+        if stale_sources:
+            reasons.append(f"{len(stale_sources)} stale/basi")
+        reason_str = ", ".join(reasons) if reasons else "unknown reason"
+        print(f"  x Dropped ({reason_str}): {canonical_entity['canonical_name']}")
         return "dropped"
 
     conn = sqlite3.connect("trends.db")
@@ -193,11 +201,12 @@ def process_entity_with_pending(canonical_entity: Dict, origin: str) -> str:
 
     for source in valid_sources:
         cursor.execute("""
-            INSERT INTO pending_sources (pending_id, url, domain, title, date_added)
-            VALUES (?, ?, ?, ?, ?)
-        """, (matched_id, source["url"], source["domain"], source["title"], today))
+            INSERT INTO pending_sources (pending_id, url, domain, title, date_added, published_date, date_verified)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        """, (matched_id, source["url"], source["domain"], source["title"], today,
+              source.get("published_date"), int(source.get("date_verified", False))))
 
-    cursor.execute("SELECT domain, url, title FROM pending_sources WHERE pending_id = ?", (matched_id,))
+    cursor.execute("SELECT domain, url, title, published_date, date_verified FROM pending_sources WHERE pending_id = ?", (matched_id,))
     all_sources = cursor.fetchall()
     distinct_domains = len(set(s[0] for s in all_sources))
 
@@ -208,11 +217,11 @@ def process_entity_with_pending(canonical_entity: Dict, origin: str) -> str:
         """, (today, canonical_entity["canonical_name"], distinct_domains, "Baru", origin))
         trend_id = cursor.lastrowid
 
-        for domain, url, title in all_sources:
+        for domain, url, title, published_date, date_verified in all_sources:
             cursor.execute("""
-                INSERT INTO trend_sources (trend_id, url, domain, title, source_type, llm_layer_used)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (trend_id, url, domain, title, classify_source_type(domain), "manual"))
+                INSERT INTO trend_sources (trend_id, url, domain, title, source_type, llm_layer_used, published_date, date_verified)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (trend_id, url, domain, title, classify_source_type(domain), "manual", published_date, date_verified))
 
         cursor.execute("DELETE FROM pending_sources WHERE pending_id = ?", (matched_id,))
         cursor.execute("DELETE FROM pending_entities WHERE id = ?", (matched_id,))

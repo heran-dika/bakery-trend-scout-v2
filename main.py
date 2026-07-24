@@ -10,9 +10,11 @@ from tools_id_pulse import fetch_id_pulse_articles, DOMESTIC_KEYWORDS
 from tools_global_scout import fetch_global_scout_articles, get_todays_country
 from canonicalize import canonicalize_entities
 from db_operations import insert_daily_trends, delete_today_trends, process_entity_with_pending, expire_old_pending
+from freshness_check import enrich_canonical_entities
 from agent_trend_analyst import update_trend_status
 from agent_reporter import generate_report, send_email
 from llm_fallback import call_llm_with_fallback
+from google_trends_signals import fetch_and_store_signals
 
 load_dotenv()
 
@@ -136,6 +138,9 @@ def main():
             canonical = canonicalize_entities(entities)
             print(f"    -> {len(canonical)} unique trends\n")
 
+            print("[3b] Checking source freshness (best-effort)...")
+            canonical = enrich_canonical_entities(canonical)
+
             print("[4] Inserting to DB (via pending accumulation)...")
             counts = {"inserted": 0, "pending_new": 0, "pending_merged": 0, "dropped": 0}
             for entity in canonical:
@@ -145,10 +150,15 @@ def main():
                   f"{counts['pending_merged']} merged into pending, {counts['dropped']} dropped\n")
 
     print("[5] Fetching Global Scout...")
-    country, keyword, region = get_todays_country()
-    global_articles, global_articles_filtered = fetch_and_filter(fetch_global_scout_articles, country, keyword, region, max_results=10)
-    print(f"    -> {len(global_articles)} articles from {country}\n")
-    print(f"    -> {len(global_articles_filtered)} kept (bakery-related)\n")
+    country_info = get_todays_country()
+    if country_info is None:
+        print("    -> Weekend, tidak ada negara terjadwal, skip Global Scout\n")
+        global_articles_filtered = []
+    else:
+        country, keyword, region = country_info
+        global_articles, global_articles_filtered = fetch_and_filter(fetch_global_scout_articles, country, keyword, region, max_results=10)
+        print(f"    -> {len(global_articles)} articles from {country}\n")
+        print(f"    -> {len(global_articles_filtered)} kept (bakery-related)\n")
 
     if global_articles_filtered:
         print("[6] Extracting entities via LLM...")
@@ -160,6 +170,9 @@ def main():
             canonical = canonicalize_entities(entities)
             print(f"    -> {len(canonical)} unique trends\n")
 
+            print("[7b] Checking source freshness (best-effort)...")
+            canonical = enrich_canonical_entities(canonical)
+
             print("[8] Inserting to DB (via pending accumulation)...")
             counts = {"inserted": 0, "pending_new": 0, "pending_merged": 0, "dropped": 0}
             for entity in canonical:
@@ -167,6 +180,13 @@ def main():
                 counts[status] += 1
             print(f"    -> {counts['inserted']} promoted, {counts['pending_new']} new pending, "
                   f"{counts['pending_merged']} merged into pending, {counts['dropped']} dropped\n")
+
+    print("[8b] Checking Google Trends signals (best-effort, non-blocking)...")
+    try:
+        fetch_and_store_signals()
+    except Exception as e:
+        print(f"    -> Google Trends check failed, skipping: {type(e).__name__}: {e}")
+        logging.info(f"[GOOGLE_TRENDS_FAIL] {type(e).__name__}: {e}")
 
     print("[9] Analyzing trends...")
     update_trend_status()

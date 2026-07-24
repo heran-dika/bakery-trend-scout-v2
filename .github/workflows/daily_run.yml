@@ -1,4 +1,4 @@
-﻿name: BakeryTrendScout Daily Run
+name: BakeryTrendScout Daily Run
 
 on:
   schedule:
@@ -26,7 +26,6 @@ jobs:
     - name: Run pipeline
       env:
         GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
         OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
@@ -37,5 +36,13 @@ jobs:
         git config user.name "BakeryTrendScout Bot"
         git config user.email "bot@bakerytrendscout.local"
         git add trends.db
-        git commit -m "[auto] Daily run - $(date +%Y-%m-%d)" || true
-        git push || true
+        if git diff --cached --quiet; then
+          echo "Tidak ada perubahan trends.db, skip commit."
+        else
+          git commit -m "[auto] Daily run - $(date +%Y-%m-%d)"
+          if git push; then
+            echo "Push berhasil."
+          else
+            echo "::warning::git push GAGAL -- trends.db TIDAK ke-update di repo. Cek permission token Actions."
+          fi
+        fi
