@@ -1,4 +1,4 @@
-import sqlite3
+﻿import sqlite3
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -30,6 +30,14 @@ def tag_trend_name(name: str) -> str:
     if lang != "EN":
         return f"[{lang}] {name}"
     return name
+
+def confidence_badge(mention_count: int) -> str:
+    """[2026-08-20] Badge visual: bedain sinyal 1-sumber (baru muncul, perlu dicek
+    manual) vs yang udah dikonfirmasi >=2 sumber. Ditambahkan bareng penurunan
+    MIN_DISTINCT_DOMAINS ke 1 di db_operations.py."""
+    if mention_count <= 1:
+        return '<span class="status" style="background:#fff3cd;color:#856404;">Sinyal awal (1 sumber)</span>'
+    return '<span class="status" style="background:#e8f5e9;color:#388e3c;">Terkonfirmasi (' + str(mention_count) + ' sumber)</span>'
 
 def generate_report() -> str:
     """Generate laporan HTML dari trend hari ini."""
@@ -84,6 +92,7 @@ def generate_report() -> str:
             <div class="trend-item">
                 <strong>{tagged_name}</strong>
                 <span class="status {status_class}">{status}</span>
+                {confidence_badge(mention_count)}
                 <br>
                 <small>Mentions (distinct domains): {mention_count}</small>
             '''
@@ -115,6 +124,7 @@ def generate_report() -> str:
             <div class="trend-item">
                 <strong>{tagged_name}</strong>
                 <span class="status status-naik">Global</span>
+                {confidence_badge(mention_count)}
                 <br>
                 <small>Mentions (distinct domains): {mention_count}</small>
             '''

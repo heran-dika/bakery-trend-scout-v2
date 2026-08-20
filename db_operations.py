@@ -1,4 +1,4 @@
-import sqlite3
+﻿import sqlite3
 from datetime import datetime
 from canonicalize import names_match
 from typing import List, Dict
@@ -17,7 +17,11 @@ EXCLUDED_DOMAINS = [
     "ytrecipe.com",  # affiliate site (jualan produk Amazon lewat konten masak YouTube), evergreen bukan sinyal tren (confirmed Dika 2026-07-22)
 ]
 
-MIN_DISTINCT_DOMAINS = 2
+# [2026-08-20] Diturunkan dari 2 ke 1 -- threshold >=2 domain terbukti drop hampir semua
+# sinyal asli (produk yang beneran baru viral wajar cuma diliput 1 sumber di awal).
+# Info jumlah domain tetap kesimpan di mention_count & ditampilkan sebagai badge
+# confidence di email report (lihat agent_reporter.py).
+MIN_DISTINCT_DOMAINS = 1
 
 def is_source_excluded(domain: str, url: str = "") -> bool:
     """True kalau domain di-exclude, ATAU domain tiktok.com tapi URL-nya
